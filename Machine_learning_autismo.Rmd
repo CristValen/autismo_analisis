@@ -1,0 +1,339 @@
+---
+title: "Machine Learning Autismo"
+author: "Cristopher Valenzuela"
+date: "10 de marzo de 2022"
+output: html_document
+---
+
+
+#Aplicación de machine learning.
+
+Una vez obtenidos los genes diferencialmente expresados entre controles y autismo, procedemos a obtener datos que nos permiten aplicar algoritmos de machine learning con el objetivo de clasificar a los pacientes de los sanos. Aplicamos los distintos algoritmos para comparar la precisión de cada uno de ellos.
+
+
+```{r global-options, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+```
+
+
+```{r }
+
+#cargamos los datos guardados que contienen la variable dependiente y las predictoras que serian los genes, que obtuvimos del proyecto de R anterior.
+
+datos.autismo<-read.csv("C:\\Users\\Cristopher\\Desktop\\datos omicos git\\autismo\\austismo_analisis\\Machine_learning_firmas\\top_genes.csv")
+
+#eliminamos la primera columna, que son los identificadores de las muestras
+row.names(datos.autismo) = datos.autismo$X
+datos.autismo = datos.autismo[,-1]
+
+datos.autismo[1:10,1:7]
+
+
+
+```
+
+
+Utilizaremos distintas tecnicas de Machine learning para intentar predecir a los pacientes con autismo versus los controles.
+
+#Support Vector Machines (SVM)
+
+
+```{r}
+
+library(caret)
+library(e1071)
+
+
+#Procedemos a la particion de datos en 70 y 30.
+
+t.svm<- createDataPartition(as.factor(datos.autismo$diagnostico), p = 0.7, list = F)
+
+#creamos el modelo
+mod.svm <- svm(as.factor(diagnostico) ~ ., data = datos.autismo[t.svm,])
+
+mod.svm
+
+
+
+```
+
+Veremos que tan bien predice el modelo.
+
+```{r}
+
+table(datos.autismo[t.svm,"diagnostico"], fitted(mod.svm), dnn = c("Actual","Predicho"))
+
+```
+
+Intentaremos predecir basándonos en el modelo anterior, utilizando los datos que no tomamos en la creación del modelo anterior.
+
+```{r}
+
+pred.svm<- predict(mod.svm, datos.autismo[-t.svm,])
+table(datos.autismo[-t.svm,"diagnostico"],pred.svm,dnn = c("Actual","Predicho"))
+
+
+```
+
+Pese a que no hay muchos datos, no predice mal.
+
+Podemos realizar un gráfico de la división, utilizando dos genes como ILMN_1735360 y ILMN_2075927.
+
+```{r}
+
+plot(mod.svm , data = datos.autismo[t.svm,],  ILMN_1735360 ~ ILMN_2075927)
+
+```
+
+
+Graficamos sin la separación de rectas.
+
+
+```{r}
+
+plot(mod.svm , data = datos.autismo[-t.svm,],  ILMN_1735360 ~ ILMN_2075927)
+
+```
+
+
+#Naive Bayes.
+
+
+```{r}
+
+library(e1071)
+library(caret)
+library(naivebayes)
+
+#creamos un conjunto de entrenamiento.
+
+t.NB <- createDataPartition(as.factor(datos.autismo$diagnostico), p = 0.7, list = F)
+
+#Intentamos predecir el diagnóstico de autismo al igual que en el apartado anterior.
+
+mod.NB<-naiveBayes(as.factor(diagnostico) ~ ., data = datos.autismo[t.NB,])
+
+mod.NB
+
+
+```
+
+Vamos a probar el modelo en frente de las variables que no tome para predecir de las visualizaciones de validacion.
+
+```{r}
+
+pred.NB<- predict(mod.NB, datos.autismo[-t.NB,])
+
+tab.NB <- table(datos.autismo[-t.NB,]$diagnostico, pred.NB, dnn = c("Actual","Predicha"))
+
+confusionMatrix(tab.NB)
+
+```
+
+El "Accuracy" es de 0.814, este modelo tiene una buena discriminacion entre caso y controles.
+
+#The k-nearest neighbors (KNN)
+
+```{r}
+
+#creamos los datos de entrenamiento
+t.knn<- createDataPartition(as.factor(datos.autismo$diagnostico), p=0.7,list = F)
+# 70% de datos de entrenamiento
+
+train.knn <- datos.autismo[t.knn, ]
+temp.knn <- datos.autismo[-t.knn, ]
+
+v.ids.knn <- createDataPartition(temp.knn$diagnostico, p=0.7, list = F)
+
+val.knn <- temp.knn[v.ids.knn,]
+test.knn <- temp.knn[-v.ids.knn,]
+
+pred1.knn <- knn3Train(train.knn[,2:7], val.knn[,2:7], train.knn[,1], k = 1)
+#vamos a generar una matrix de confusion para ver como nos queda el resultado:
+
+m.knn <- table(val.knn$diagnostico, pred1.knn, dnn = c("Actual", "Predichos"))
+
+m.knn
+```
+
+Para ver que resultados tengo, si elijo 5 vecinos en vez de 1
+
+```{r}
+m.knn2 <- table(val.knn$diagnostico, pred1.knn, dnn = c("Actual", "Predichos"))
+
+pred1.knn2 <- knn3Train(train.knn[,2:7], val.knn[,2:7], train.knn[,1], k = 5)
+
+m.knn2
+```
+
+Obtenemos el mismo resultado.
+
+Eligiendo el mejor números de vecinos para la decisión.
+
+```{r}
+
+knn.automate <- function(tr_predictors, val_predictors, tr_target,
+                         val_target, start_k, end_k)
+
+  
+for (k in start_k:end_k) {
+  pred <- knn3Train(tr_predictors, val_predictors, tr_target, )
+  tab <- table(val_target, pred, dnn = c("Actual", "Predichos") )
+  cat(paste("Matriz de confusion para k = ",k,"\n"))
+  cat("==============================\n")
+  print(tab)
+  cat("------------------------------\n")
+  }
+
+#ahora le pasamos las predicciones
+knn.automate(train.knn[,2:7], val.knn[,2:7], train.knn[,1], val.knn[,1], 1,10)
+```
+
+
+También se puede utilizar el paquete caret para este mismo objetivo.
+
+```{r}
+
+trcntrl<- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+# el numero de veces que se llevara a cabo la operacion es 10 y el numero de repeticiones 3.
+# esto es nuestro dato de control.
+
+caret_knn_fit <- train(as.factor(as.factor(diagnostico)) ~ ., data = train.knn,
+                       method = "knn", trControl = trcntrl,
+                       preProcess = c("center","scale"),
+                       tuneLength = 10)
+
+caret_knn_fit
+
+```
+
+```{r}
+plot(caret_knn_fit,type = "b", xlab="K- Value",ylab="Accuracy level")
+```
+
+
+
+En este caso con K=9 es el ideal, se obtiene una precision del 82%.Realizamos una prediccion con k=9
+
+```{r}
+
+pred.knn.9 <- knn3Train(train.knn[,2:7], val.knn[,2:7], train.knn[,1], k=9, prob = T)
+
+pred.knn.9[1:9]
+
+```
+
+
+
+
+Redes Neuronales
+
+
+```{r}
+library(nnet)
+#segmentamos y creamos el conjunto de entrenamiento:
+
+t.nnet<-createDataPartition(as.factor(datos.autismo$diagnostico), p= 0.7, list = F)
+
+#creamos el modelo
+mod.nnet <- nnet(as.factor(diagnostico) ~., data = datos.autismo[t.nnet,],
+            size = 3, maxit = 10000, decay = .001, rang = 0.32,
+            na.action = na.omit, skip = T)
+
+```
+
+
+```{r}
+apply(datos.autismo, 2, max)
+```
+
+```{r}
+mod.nnet <- nnet(as.factor(diagnostico) ~., data = datos.autismo[t.nnet,],
+            size = 3, maxit = 10000, decay = .001, rang = 0.303,
+            na.action = na.omit, skip = T)
+
+
+```
+
+El maximo es 3.310769, este numero 3.310769*0.303 = 1.003163.
+
+Realizamos el plot con el modelo.
+
+```{r}
+
+library(NeuralNetTools)
+
+NeuralNetTools::plotnet(mod.nnet)
+
+```
+
+
+```{r}
+
+pred_nnet <- predict(mod.nnet, newdata = datos.autismo[-t.nnet,], type = "class")
+
+#creamos una matriz de confusion
+
+table(datos.autismo[-t.nnet,]$diagnostico, pred_nnet, dnn = c("Actual","Predichos"))
+
+```
+
+Creamos una curva ROC para ver que tan bien clasifica.
+
+```{r}
+
+library(ROCR)
+pred2_nnet <- predict(mod.nnet, newdata = datos.autismo[-t.nnet,], type = "raw")
+perf <- performance(prediction(pred2_nnet, datos.autismo[-t.nnet,"diagnostico"]),
+                    "tpr", "fpr")
+
+plot(perf)
+
+```
+
+En este caso observamos que no predice bien.
+
+
+#Análisis Discriminante Lineal
+
+```{r}
+
+library(MASS)
+t.ADL <- createDataPartition(as.factor(datos.autismo$diagnostico), p=0.7, list = F)
+
+#seleccionamos los parametros de salida
+mod.ADL <- lda(datos.autismo[t.ADL,2:7], datos.autismo[t.ADL,1])
+
+```
+
+
+```{r}
+
+
+# Predecimos los valores, voy a utilizar el data frame original
+
+datos.autismo[t.ADL, "Pred"] <- predict(mod.ADL, datos.autismo[t.ADL, 2:7])$class
+
+#creamos una matriz de confusion
+
+table(datos.autismo[t.ADL, "diagnostico"], datos.autismo[t.ADL, "Pred"], dnn = c("Actual","Predichos"))
+
+```
+
+```{r}
+#Tenemos una variable de prediccion lleno de NAs, voy a cambiar los NAs con su prediccion.
+
+datos.autismo[-t.ADL, "Pred"] <- predict(mod.ADL, datos.autismo[-t.ADL, 2:7])$class
+
+
+```
+
+
+
+```{r}
+#podriamos hacer una table de doble entrada, una matriz de confusion.
+
+table(datos.autismo[-t.ADL,"diagnostico"], datos.autismo[-t.ADL, "Pred"], dnn = c("Actual","Predicho"))
+```
+

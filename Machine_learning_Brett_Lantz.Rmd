@@ -1,0 +1,408 @@
+---
+title: "Machine Learning UOC"
+author: "Cristopher Valenzuela"
+date: "13 de marzo de 2022"
+output: html_document
+---
+
+
+#Machine Learning aplicando algoritmos de Brett Lantz (2015).
+
+```{r global-options, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+```
+
+
+Carga y limpieza de los datos
+
+```{r}
+
+datos<-read.csv("C:\\Users\\Cristopher\\Desktop\\certificados\\UOC\\Bioestadistica y Bioinformatica\\Libro Machine learning UOC\\Machine learning R UOC\\top_genes.csv")
+
+rownames(datos) = datos$X
+datos = datos[,-1]
+
+datos$diagnostico = as.factor(datos$diagnostico) 
+datos[1:10,1:7]
+
+```
+
+
+#k-NN algorithm
+
+```{r}
+
+table(datos$diagnostico)
+round(prop.table(table(datos$diagnostico)) * 100, digits = 1)
+
+```
+
+Creamos los datos de entrenamiento y test
+
+```{r}
+ knn_train <- datos[1:100, ]
+ knn_test <- datos[101:147, ]
+
+ #creamos tambien las etiquetas 
+ knn_train_labels <- datos[1:100, 1]
+ knn_test_labels <- datos[101:147, 1]
+ 
+```
+
+
+Entrenar el modelo con los datos
+
+
+```{r}
+
+library(class)
+
+knn_test_pred <- knn(train = knn_train, test = knn_test,
+cl = knn_train_labels, k = 5)
+
+knn_test_pred
+
+```
+
+Evaluacion del modelo
+
+```{r}
+
+library(gmodels)
+CrossTable(x = knn_test_labels, y = knn_test_pred,prop.chisq=FALSE)
+
+```
+
+
+La precisión fue de 44 casos clasificados correctamente sobre 47, una precisión del 93.61702%.
+
+
+
+#Classification Using Naive Bayes
+
+
+```{r}
+
+library(e1071)
+
+ nb_train <- datos[1:100, ]
+ nb_test <- datos[101:147, ]
+
+ #creamos tambien las etiquetas 
+ nb_train_labels <- datos[1:100, 1]
+ nb_test_labels <- datos[101:147, 1]
+
+#creacion del modelo
+nb_classifier <- naiveBayes(nb_train, nb_train_labels)
+
+nb_classifier
+
+```
+
+Evaluación del modelo
+
+```{r}
+nb_test_pred <- predict(nb_classifier, nb_test)
+nb_test_pred
+
+```
+
+Evaluacion del modelo
+
+```{r}
+
+ library(gmodels)
+CrossTable(nb_test_pred, nb_test_labels,
+prop.chisq = FALSE, prop.t = FALSE,
+dnn = c('predicted', 'actual'))
+
+```
+
+Logro predecir el 47 de 47, una precision del 100%.
+
+
+#Tree
+
+```{r}
+
+#tomaremos 100 numeros aleatorios del 1 al 147
+set.seed(2022)
+tree_sample <- sample(147, 100)
+
+#creamos el entrenamiento y el test
+ tree_train <- datos[tree_sample, ]
+ tree_test <- datos[-tree_sample, ]
+
+#calculamos los porcentaje de cada variable
+prop.table(table(tree_train$diagnostico))
+prop.table(table(tree_test$diagnostico))
+```
+
+Entrenar el modelo
+
+
+```{r}
+library(C50)
+
+#Primero excluimos la variable dependiente y despues la agregamos en el modelo.
+tree_model <- C5.0(tree_train[-1], tree_train$diagnostico)
+tree_model
+```
+
+```{r}
+summary(tree_model)
+```
+
+```{r}
+plot(tree_model)
+```
+
+
+El modelo fallo 18 de 100, el modelo tiene una precision del 82%.
+
+Evaluacion del rendimiento del modelo
+
+```{r}
+
+tree_pred <- predict(tree_model, tree_test)
+tree_pred
+```
+
+```{r}
+ library(gmodels)
+ CrossTable(tree_test$diagnostico, tree_pred,
+prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
+dnn = c('actual default', 'predicted default'))
+```
+
+En este caso la tuvo aciertos de 37 de 47, una precision del 78.7234%.
+
+Realizamos nuevamente el modelo pero para disminuir el error haremos una modificacion agregando "adaptive boosting".
+
+```{r}
+#Utilizamos por defecto trials = 10
+tree_boost10 <- C5.0(tree_train[-1], tree_train$diagnostico,
+trials = 10)
+
+tree_boost10
+
+```
+
+
+```{r}
+
+summary(tree_boost10)
+
+```
+
+En este caso, se obtuvo 88 aciertos, que corresponde al 88%, implica un aumento en la precision del modelo.
+
+Se analiza si ocurre una mejor en los datos de prueba
+```{r}
+ tree_boost_pred10 <- predict(tree_boost10, tree_test)
+ CrossTable(tree_test$diagnostico, tree_boost_pred10,
+prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
+dnn = c('actual default', 'predicted default'))
+```
+
+Se obtuvo aciertos de 37 sobre 47, en este caso no mejoro el modelo.
+
+```{r}
+plot(tree_boost10)
+```
+
+
+
+#Neural Networks for classification.
+
+```{r}
+#crear el train y el test
+
+ nn_train <- datos[1:100, ]
+ nn_test <- datos[101:147, ]
+
+ 
+```
+
+
+Entrenar el modelo mas simple con un nodo oculto
+
+```{r}
+library(neuralnet)
+
+nn_model <- neuralnet(nn_train$diagnostico ~ .,
+data = nn_train)
+
+head(nn_model)
+
+```
+
+```{r}
+
+plot(nn_model)
+
+```
+
+Evaluacion del modelo
+
+```{r}
+nn.model_results <- compute(nn_model, nn_test[2:7])
+
+predicted_nn <- nn.model_results$net.result
+
+cor(predicted_nn, as.numeric(nn_test$diagnostico))
+
+```
+
+
+Mejorar el rendimiento del modelo
+
+```{r}
+
+#Incluir el parametro Hidden = 5
+
+nn_model2 <- neuralnet(diagnostico ~ .,
+data = nn_train, hidden = 5)
+
+plot(nn_model2)
+
+```
+
+Existe una mejora en el modelo, de un erorr de 13.2 al error reciente de 1.28, tambien aumentaron los pasos a 3506, el modelo se volvio mas complejo.
+
+
+#Support Vector Machines
+
+Crear los datos de "train" y "test"
+
+```{r}
+
+ svm_train <- datos[1:100, ]
+ svm_test <- datos[101:147, ]
+
+```
+
+Entrenar el modelo
+
+```{r}
+
+library(kernlab)
+
+svm_classifier <- ksvm(diagnostico ~ ., data = svm_train,
+kernel = "vanilladot")
+svm_classifier
+```
+
+Mejorando el modelo
+
+```{r}
+svm_predictions <- predict(svm_classifier, svm_test)
+svm_predictions
+```
+
+```{r}
+table(svm_predictions, svm_test$diagnostico)
+```
+
+Si queremos la evaluacion del modelo en true o false
+
+```{r}
+agreement <- svm_predictions == svm_test$diagnostico
+table(agreement)
+
+```
+
+En terminos porcentuales
+
+```{r}
+prop.table(table(agreement))
+```
+
+Tuvo una precision del 89%.
+
+El modelo SVM anterior usaba la función kernel lineal simple. Mediante el uso de una función kernel más compleja, podemos mapear los datos en un espacio dimensional más alto y, potencialmente, obtener un mejor ajuste del modelo.
+
+```{r}
+#Lo haremos ahora con el Gaussian RBF kernel.
+
+svm_classifier_rbf <- ksvm(diagnostico ~ ., data = svm_train,
+kernel = "rbfdot")
+
+#predicciones
+
+svm_predictions_rbf <- predict(svm_classifier_rbf,svm_test)
+
+#La precision
+
+agreement_rbf <- svm_predictions_rbf == svm_test$diagnostico
+table(agreement_rbf)
+
+```
+
+Una precision del 89%.
+
+```{r}
+prop.table(table(agreement_rbf))
+```
+
+El modelo no mejoro se mantuvo en el 89%.
+
+#Random Forest
+
+```{r}
+library(randomForest)
+
+ set.seed(2022)
+ rf <- randomForest(datos$diagnostico ~ ., data = datos)
+rf
+```
+
+Mejorar el modelo
+
+```{r}
+
+ library(caret)
+ ctrl <- trainControl(method = "repeatedcv",
+number = 10, repeats = 10)
+
+
+```
+
+configuraremos la cuadrícula de ajuste para el bosque aleatorio. El único parámetro de ajuste para este modelo es mtry, que define cuántas características se seleccionan aleatoriamente en cada división
+
+
+```{r}
+grid_rf <- expand.grid(.mtry = c(2, 4, 8, 16))
+
+ set.seed(2022)
+ m_rf <- train(diagnostico ~ ., data = datos, method = "rf",
+metric = "Kappa", trControl = ctrl,
+tuneGrid = grid_rf)
+
+```
+
+Lo compararemos con un árbol potenciado usando 10, 20, 30, y 40 interacciones
+
+```{r}
+ grid_c50 <- expand.grid(.model = "tree",.trials = c(10, 20, 30, 40),.winnow = "FALSE")
+ 
+set.seed(2022)
+
+ m_c50 <- train(diagnostico~ ., data = datos, method = "C5.0",metric = "Kappa", trControl = ctrl,tuneGrid = grid_c50)
+```
+
+Cuando finalmente se complete el árbol de decisiones de C5.0, podremos comparar los dos enfoques uno al lado del otro. Para el modelo de bosque aleatorio, los resultados son
+
+```{r}
+m_rf
+```
+
+El valor ideas es "2".
+
+```{r}
+m_c50
+```
+
+El trials optimo seria el 20.
+
+
